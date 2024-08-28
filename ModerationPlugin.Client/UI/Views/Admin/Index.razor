@@ -1,0 +1,136 @@
+@page "/admin/moderation"
+
+@using Microsoft.Extensions.Logging
+@using ModerationPlugin.Shared.Http.Requests.UserBans
+@using ModerationPlugin.Shared.Http.Responses.UserBans
+@using Moonlight.Client.App.Models.Crud
+@using Moonlight.Shared.Http.Resources
+@using Moonlight.Shared.Http.Resources.Admin.Users
+
+@inject HttpApiClient HttpApiClient
+@inject ILogger<Index> Logger
+
+@attribute [RequirePermission("admin.moderation.userbans.get")]
+
+<Breadcrumb Names="@(["Admin", "Moderation"])" />
+<ViewTitle Text="User-Bans" />
+
+<div class="mt-5">
+    <SmartCrud TItem="DetailUserBanResponse"
+               TCreateForm="CreateUserBanRequest"
+               TUpdateForm="UpdateUserBanRequest"
+               OnConfigure="OnConfigure">
+        <View>
+            <SmartColumn TItem="DetailUserBanResponse" Field="@(x => x.Id)" Title="Id" />
+            <SmartColumn TItem="DetailUserBanResponse" Field="@(x => x.Reason)" Title="Reason" />
+            <SmartColumn TItem="DetailUserBanResponse" Field="@(x => x.Comment)" Title="Comment" />
+            <SmartColumn TItem="DetailUserBanResponse" Field="@(x => x.DurationDays)" Title="Duration (days)" />
+            <SmartColumn TItem="DetailUserBanResponse" Field="@(x => x.UserId)" Title="User">
+                <Template>
+                    @if (Users.ContainsKey(context.UserId))
+                    {
+                        <span>@(Users[context.UserId].Username)</span>
+                    }
+                    else
+                    {
+                        <span>Unknown user: @(context.UserId)</span>
+                    }
+                </Template>
+            </SmartColumn>
+            <SmartColumn TItem="DetailUserBanResponse" Field="@(x => x.CreatedAt)" Title="Created at">
+                <Template>
+                    @Formatter.FormatDate(context.CreatedAt)
+                </Template>
+            </SmartColumn>
+        </View>
+    </SmartCrud>
+</div>
+
+@code
+{
+    private Dictionary<int, DetailUserResponse> Users = new();
+    
+    private void OnConfigure(CrudOptions<DetailUserBanResponse, CreateUserBanRequest, UpdateUserBanRequest> options)
+    {
+        options.Loader = async (page, pageSize) =>
+        {
+            Users.Clear();
+            
+            var result = await HttpApiClient.GetJson<PagedResponse<DetailUserBanResponse>>($"admin/moderation/userbans?page={page}&pageSize={pageSize}");
+
+            foreach (var item in result.Items)
+            {
+                // Skip already cached user
+                if(Users.ContainsKey(item.UserId))
+                    continue;
+                
+                try
+                {
+                    var userDetail = await HttpApiClient.GetJson<DetailUserResponse>($"admin/users/{item.UserId}");
+
+                    Users[item.UserId] = userDetail;
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("An error occured while fetching user data (ID: {id}): {e}", item.UserId, e);
+                }
+            }
+
+            return result;
+        };
+
+        options.CreateFunction = async request => await HttpApiClient.Post("admin/moderation/userbans", request);
+        options.UpdateFunction = async (request, item) => await HttpApiClient.Patch($"admin/moderation/userbans/{item.Id}", request);
+        options.DeleteFunction = async item => await HttpApiClient.Delete($"admin/moderation/userbans/{item.Id}");
+
+        options.OnConfigureCreate = option =>
+        {
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.Reason)
+                .WithColumns(6);
+            
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.DurationDays)
+                .WithName("Duration")
+                .WithColumns(6);
+            
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.Comment)
+                .WithColumns(6);
+            
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.UserId)
+                .WithColumns(6);
+        };
+
+        options.OnConfigureUpdate = option =>
+        {
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.Reason)
+                .WithColumns(6);
+            
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.DurationDays)
+                .WithName("Duration")
+                .WithColumns(6);
+            
+            option
+                .DefaultPage
+                .DefaultSection
+                .AddProperty(x => x.Comment)
+                .WithColumns(6);
+        };
+    }
+}
