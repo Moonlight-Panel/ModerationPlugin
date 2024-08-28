@@ -421,5 +421,5 @@ FodyWeavers.xsd
 .idea/**/libraries
 
 # Moonlight
-ModerationPlugin/ModerationPlugin.ApiServer/storage/**
+/ModerationPlugin.ApiServer/storage/**
 /.idea/.idea.ModerationPlugin/.idea
